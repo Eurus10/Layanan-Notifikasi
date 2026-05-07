@@ -89,13 +89,23 @@ const Tunggakan = () => {
         if (!studentName) { skipped++; continue; }
 
         let match;
+        const normalizedName = studentName.toLowerCase();
+        
         if (studentClass) {
-          match = students.find(s => s.name.toLowerCase().trim() === studentName.toLowerCase() && s.class === studentClass);
+          const normalizedClass = studentClass.toLowerCase();
+          match = students.find(s => 
+            s.name.toLowerCase().trim() === normalizedName && 
+            (s.class || '').toLowerCase().trim() === normalizedClass
+          );
         } else {
-          match = students.find(s => s.name.toLowerCase().trim() === studentName.toLowerCase());
+          match = students.find(s => s.name.toLowerCase().trim() === normalizedName);
         }
         
-        if (!match) { skipped++; continue; }
+        if (!match) { 
+          console.warn(`Skipped: Siswa tidak ditemukan -> Nama: "${studentName}", Kelas: "${studentClass || '-'}"`);
+          skipped++; 
+          continue; 
+        }
 
         const { error } = await supabase.from('notif_arrears').insert([{
           student_id: match.id,
