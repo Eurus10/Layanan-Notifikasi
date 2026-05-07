@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   MessageSquare, FileText, Search, Download, Printer,
-  X, CheckCircle2, Phone, Send, FileDown, FileUp, Edit2, Save, Edit
+  X, CheckCircle2, Phone, Send, FileDown, FileUp, Edit2, Save, Edit,
+  Plus, Trash2, UserPlus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
@@ -15,7 +16,9 @@ const Notifikasi = () => {
   const [selected, setSelected] = useState(new Set());
   const [showLetterModal, setShowLetterModal] = useState(null);
   const [showEditModal, setShowEditModal] = useState(null);
-  const [editForm, setEditForm] = useState({ phone: '', items: [] });
+  const [showAddStudentModal, setShowAddStudentModal] = useState(false);
+  const [studentSearchTerm, setStudentSearchTerm] = useState('');
+  const [editForm, setEditForm] = useState({ phone: '', items: [], deletedIds: [] });
   const [savingEdit, setSavingEdit] = useState(false);
   const letterRef = useRef(null);
 
@@ -141,9 +144,40 @@ const Notifikasi = () => {
     const items = studentArrearsMap[student.id] || [];
     setEditForm({
       phone: student.parent_phone || '',
-      items: items.map(i => ({ ...i })) // Deep copy
+      items: items.map(i => ({ ...i })), // Deep copy
+      deletedIds: []
     });
     setShowEditModal(student);
+  };
+
+  const handleAddItem = () => {
+    setEditForm({
+      ...editForm,
+      items: [
+        ...editForm.items,
+        { 
+          id: 'temp-' + Date.now(), 
+          payment_type: '', 
+          month: '', 
+          amount: 0, 
+          student_id: showEditModal.id,
+          is_new: true 
+        }
+      ]
+    });
+  };
+
+  const handleRemoveItem = (idx) => {
+    const itemToRemove = editForm.items[idx];
+    const newItems = [...editForm.items];
+    newItems.splice(idx, 1);
+    
+    const newDeletedIds = [...editForm.deletedIds];
+    if (!itemToRemove.is_new) {
+      newDeletedIds.push(itemToRemove.id);
+    }
+    
+    setEditForm({ ...editForm, items: newItems, deletedIds: newDeletedIds });
   };
 
   const handleSaveEdit = async () => {
@@ -159,18 +193,39 @@ const Notifikasi = () => {
       
       if (studentError) throw studentError;
 
-      // 2. Update Arrears Items
-      for (const item of editForm.items) {
-        const { error: arrearError } = await supabase
+      // 2. Handle Deletions
+      if (editForm.deletedIds.length > 0) {
+        const { error: delError } = await supabase
           .from('notif_arrears')
-          .update({ 
-            payment_type: item.payment_type,
-            month: item.month,
-            amount: Number(item.amount)
-          })
-          .eq('id', item.id);
-        
-        if (arrearError) throw arrearError;
+          .delete()
+          .in('id', editForm.deletedIds);
+        if (delError) throw delError;
+      }
+
+      // 3. Handle Arrears Items (Upsert/Update)
+      for (const item of editForm.items) {
+        if (item.is_new) {
+          const { error: insError } = await supabase
+            .from('notif_arrears')
+            .insert([{
+              student_id: showEditModal.id,
+              payment_type: item.payment_type,
+              month: item.month,
+              amount: Number(item.amount),
+              is_paid: false
+            }]);
+          if (insError) throw insError;
+        } else {
+          const { error: arrearError } = await supabase
+            .from('notif_arrears')
+            .update({ 
+              payment_type: item.payment_type,
+              month: item.month,
+              amount: Number(item.amount)
+            })
+            .eq('id', item.id);
+          if (arrearError) throw arrearError;
+        }
       }
 
       alert('Data berhasil diperbarui!');
@@ -378,6 +433,9 @@ const Notifikasi = () => {
           <button className="btn btn-outline btn-sm" onClick={selectAll}>
             <CheckCircle2 size={16} />
             {selected.size === filtered.length && filtered.length > 0 ? 'Batal Pilih' : `Pilih Semua (${filtered.length})`}
+          </button>
+          <button className="btn btn-primary btn-sm" onClick={() => setShowAddStudentModal(true)}>
+            <UserPlus size={16} /> Tambah Siswa
           </button>
           <button
             className="btn btn-wa btn-sm"
@@ -619,14 +677,17 @@ const Notifikasi = () => {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              style={{ maxWidth: '600px' }}
+              style={{ maxWidth: '650px' }}
             >
               <div className="modal-header">
-                <h3>Edit Data — {showEditModal.name}</h3>
+                <div>
+                  <h3 style={{ marginBottom: '0.2rem' }}>Kelola Data — {showEditModal.name}</h3>
+                  <span className="badge badge-info">{showEditModal.class}</span>
+                </div>
                 <button className="modal-close" onClick={() => setShowEditModal(null)}><X size={16} /></button>
               </div>
 
-              <div className="modal-body" style={{ padding: '1.5rem' }}>
+              <div className="modal-body" style={{ padding: '1.5rem', maxHeight: '70vh', overflowY: 'auto' }}>
                 <div className="form-group" style={{ marginBottom: '1.5rem' }}>
                   <label>Nomor WhatsApp (Wali Murid)</label>
                   <div style={{ position: 'relative' }}>
@@ -641,18 +702,27 @@ const Notifikasi = () => {
                   </div>
                 </div>
 
-                <div style={{ marginBottom: '0.5rem' }}>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Rincian Tunggakan</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <label style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-muted)' }}>Daftar Tunggakan Aktif</label>
+                  <button className="btn btn-outline btn-sm" onClick={handleAddItem} style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}>
+                    <Plus size={14} /> Tambah Item
+                  </button>
                 </div>
                 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '300px', overflowY: 'auto', paddingRight: '0.5rem' }}>
-                  {editForm.items.map((item, idx) => (
-                    <div key={item.id} className="glass-panel" style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {editForm.items.length > 0 ? editForm.items.map((item, idx) => (
+                    <div key={item.id} className="glass-panel" style={{ padding: '1rem', background: 'rgba(255,255,255,0.03)', border: item.is_new ? '1px dashed var(--accent-blue)' : '1px solid var(--glass-border)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+                        <button className="btn btn-icon btn-danger btn-sm" onClick={() => handleRemoveItem(idx)} title="Hapus Item">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
                       <div className="form-row">
                         <div className="form-group">
                           <label style={{ fontSize: '0.75rem' }}>Jenis Tagihan</label>
                           <input
                             className="form-input form-input-sm"
+                            placeholder="SPP, Buku, dll"
                             value={item.payment_type}
                             onChange={(e) => {
                               const newItems = [...editForm.items];
@@ -665,6 +735,7 @@ const Notifikasi = () => {
                           <label style={{ fontSize: '0.75rem' }}>Bulan/Ket</label>
                           <input
                             className="form-input form-input-sm"
+                            placeholder="Mei 2026, dll"
                             value={item.month}
                             onChange={(e) => {
                               const newItems = [...editForm.items];
@@ -673,22 +744,26 @@ const Notifikasi = () => {
                             }}
                           />
                         </div>
-                      </div>
-                      <div className="form-group" style={{ marginTop: '0.5rem' }}>
-                        <label style={{ fontSize: '0.75rem' }}>Nominal (Rp)</label>
-                        <input
-                          type="number"
-                          className="form-input form-input-sm"
-                          value={item.amount}
-                          onChange={(e) => {
-                            const newItems = [...editForm.items];
-                            newItems[idx].amount = e.target.value;
-                            setEditForm({ ...editForm, items: newItems });
-                          }}
-                        />
+                        <div className="form-group">
+                          <label style={{ fontSize: '0.75rem' }}>Nominal (Rp)</label>
+                          <input
+                            type="number"
+                            className="form-input form-input-sm"
+                            value={item.amount}
+                            onChange={(e) => {
+                              const newItems = [...editForm.items];
+                              newItems[idx].amount = e.target.value;
+                              setEditForm({ ...editForm, items: newItems });
+                            }}
+                          />
+                        </div>
                       </div>
                     </div>
-                  ))}
+                  )) : (
+                    <div style={{ textAlign: 'center', padding: '2rem', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px dashed var(--glass-border)' }}>
+                      <p style={{ color: 'var(--text-subtle)', fontSize: '0.85rem' }}>Belum ada rincian tunggakan. Klik tombol "Tambah Item" untuk menambahkan.</p>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -697,6 +772,65 @@ const Notifikasi = () => {
                 <button className="btn btn-primary" onClick={handleSaveEdit} disabled={savingEdit}>
                   <Save size={16} /> {savingEdit ? 'Menyimpan...' : 'Simpan Perubahan'}
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Add Student to List Modal */}
+      <AnimatePresence>
+        {showAddStudentModal && (
+          <div className="modal-overlay">
+            <motion.div
+              className="modal-card"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+            >
+              <div className="modal-header">
+                <h3>Tambah Siswa ke Daftar</h3>
+                <button className="modal-close" onClick={() => setShowAddStudentModal(false)}><X size={16} /></button>
+              </div>
+
+              <div className="modal-body" style={{ padding: '1.5rem' }}>
+                <div className="search-bar" style={{ marginBottom: '1rem' }}>
+                  <Search size={16} color="var(--text-subtle)" />
+                  <input 
+                    placeholder="Cari siswa berdasarkan nama..." 
+                    value={studentSearchTerm}
+                    onChange={(e) => setStudentSearchTerm(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                
+                <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid var(--glass-border)', borderRadius: '8px' }}>
+                  {students.filter(s => s.name.toLowerCase().includes(studentSearchTerm.toLowerCase())).length > 0 ? (
+                    students
+                      .filter(s => s.name.toLowerCase().includes(studentSearchTerm.toLowerCase()))
+                      .slice(0, 100) // Performance limit
+                      .map(s => (
+                        <div 
+                          key={s.id} 
+                          className="list-item" 
+                          style={{ padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid var(--glass-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                          onClick={() => {
+                            setShowAddStudentModal(false);
+                            setStudentSearchTerm('');
+                            handleOpenEdit(s);
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontWeight: 600 }}>{s.name}</div>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>{s.class} {s.nis ? `• NIS: ${s.nis}` : ''}</div>
+                          </div>
+                          <Plus size={14} color="var(--accent-blue)" />
+                        </div>
+                      ))
+                  ) : (
+                    <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-subtle)' }}>Siswa tidak ditemukan.</div>
+                  )}
+                </div>
               </div>
             </motion.div>
           </div>

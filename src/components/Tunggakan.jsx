@@ -18,6 +18,8 @@ const Tunggakan = () => {
   const [selectedStudent, setSelectedStudent] = useState('');
   const [newItem, setNewItem] = useState({ payment_type: '', month: '', amount: '' });
   const [editingArrear, setEditingArrear] = useState(null);
+  const [studentSearchInput, setStudentSearchInput] = useState('');
+  const [showStudentDropdown, setShowStudentDropdown] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -187,9 +189,14 @@ const Tunggakan = () => {
     const hasUnpaid = studentArrears.some(a => !a.is_paid);
     const hasAnyArrears = studentArrears.length > 0;
 
-    if (filterStatus === 'unpaid' && !hasUnpaid) return false;
-    if (filterStatus === 'paid' && hasUnpaid) return false;
-    if (filterStatus === 'none' && hasAnyArrears) return false;
+    // Filter logic: By default (no filterStatus), only show students with ANY arrears
+    if (!filterStatus) {
+      if (!hasAnyArrears) return false;
+    } else {
+      if (filterStatus === 'unpaid' && !hasUnpaid) return false;
+      if (filterStatus === 'paid' && hasUnpaid) return false;
+      if (filterStatus === 'none' && hasAnyArrears) return false;
+    }
 
     return matchSearch && matchClass;
   });
@@ -371,14 +378,83 @@ const Tunggakan = () => {
                 <button className="modal-close" onClick={() => { setShowAddModal(false); setEditingArrear(null); }}><X size={16} /></button>
               </div>
 
-              <div className="form-group">
+              <div className="form-group" style={{ position: 'relative' }}>
                 <label>Pilih Siswa *</label>
-                <select className="form-input" value={selectedStudent} onChange={(e) => setSelectedStudent(e.target.value)} disabled={!!editingArrear}>
-                  <option value="">-- Pilih Siswa --</option>
-                  {students.map(s => (
-                    <option key={s.id} value={s.id}>{s.name} ({s.class})</option>
-                  ))}
-                </select>
+                {editingArrear ? (
+                  <div className="form-input" style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)' }}>
+                    {students.find(s => s.id === selectedStudent)?.name}
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        className="form-input"
+                        placeholder="Ketik nama siswa..."
+                        value={selectedStudent ? (students.find(s => s.id === selectedStudent)?.name || '') : studentSearchInput}
+                        onChange={(e) => {
+                          if (selectedStudent) setSelectedStudent('');
+                          setStudentSearchInput(e.target.value);
+                          setShowStudentDropdown(true);
+                        }}
+                        onFocus={() => setShowStudentDropdown(true)}
+                      />
+                      {selectedStudent && (
+                        <button 
+                          onClick={() => { setSelectedStudent(''); setStudentSearchInput(''); }}
+                          style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer' }}
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                    
+                    <AnimatePresence>
+                      {showStudentDropdown && !selectedStudent && (
+                        <motion.div 
+                          className="glass-panel"
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          style={{ 
+                            position: 'absolute', 
+                            top: '100%', 
+                            left: 0, 
+                            right: 0, 
+                            zIndex: 100, 
+                            maxHeight: '200px', 
+                            overflowY: 'auto',
+                            marginTop: '4px',
+                            padding: '0.5rem',
+                            boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
+                          }}
+                        >
+                          {students.filter(s => s.name.toLowerCase().includes(studentSearchInput.toLowerCase())).length > 0 ? (
+                            students
+                              .filter(s => s.name.toLowerCase().includes(studentSearchInput.toLowerCase()))
+                              .slice(0, 50)
+                              .map(s => (
+                                <div 
+                                  key={s.id} 
+                                  className="list-item" 
+                                  style={{ padding: '0.6rem 0.8rem', cursor: 'pointer', borderRadius: '4px' }}
+                                  onClick={() => {
+                                    setSelectedStudent(s.id);
+                                    setStudentSearchInput(s.name);
+                                    setShowStudentDropdown(false);
+                                  }}
+                                >
+                                  <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{s.name}</div>
+                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>{s.class}</div>
+                                </div>
+                              ))
+                          ) : (
+                            <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-subtle)', fontSize: '0.8rem' }}>Siswa tidak ditemukan.</div>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </>
+                )}
               </div>
 
               <div className="form-group">
