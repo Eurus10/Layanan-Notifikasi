@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Search, Plus, Trash2, X, Save, UploadCloud, FileDown,
+  Search, Plus, Trash2, X, Save, UploadCloud, FileDown, FileUp,
   AlertCircle, CheckCircle2, Filter, Edit2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
