@@ -69,7 +69,85 @@ const Pengaturan = () => {
   };
 
   return (
-    <div style={{ maxWidth: '720px' }}>
+  const formatIDR = (num) => new Intl.NumberFormat('id-ID', {
+    style: 'currency', currency: 'IDR', maximumFractionDigits: 0
+  }).format(num);
+
+  const getWAPreview = () => {
+    const rincian = "1. SPP (Mei 2026): Rp 500.000%0A2. Buku: Rp 200.000";
+    const total = "Rp 700.000";
+    return waTemplate
+      .replace('{nama}', 'Ahmad Fauzi')
+      .replace('{rincian}', decodeURIComponent(rincian))
+      .replace('{total}', total)
+      .replace(/%0A/g, '\n');
+  };
+
+  return (
+    <div className="settings-container">
+      <style>{`
+        .settings-container {
+          display: grid;
+          grid-template-columns: 1fr 400px;
+          gap: 2rem;
+          align-items: start;
+        }
+        @media (max-width: 1100px) {
+          .settings-container { grid-template-columns: 1fr; }
+        }
+        .preview-sticky {
+          position: sticky;
+          top: 2rem;
+          display: flex;
+          flex-direction: column;
+          gap: 1.5rem;
+        }
+        .wa-preview {
+          background: #075e54;
+          border-radius: 1rem;
+          padding: 1rem;
+          color: #fff;
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          max-width: 100%;
+          box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+        .wa-bubble {
+          background: #dcf8c6;
+          color: #333;
+          padding: 0.75rem;
+          border-radius: 0.5rem;
+          border-top-right-radius: 0;
+          font-size: 0.85rem;
+          line-height: 1.4;
+          white-space: pre-wrap;
+          position: relative;
+        }
+        .wa-bubble::after {
+          content: '';
+          position: absolute;
+          top: 0;
+          right: -10px;
+          border: 10px solid transparent;
+          border-left-color: #dcf8c6;
+          border-top-color: #dcf8c6;
+        }
+        .mini-letter {
+          background: #fff;
+          color: #333;
+          padding: 1.5rem;
+          border-radius: 4px;
+          font-size: 0.5rem;
+          box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+          transform: scale(1);
+          transform-origin: top left;
+        }
+        .mini-letter h4 { font-size: 0.7rem; margin: 0; }
+        .mini-letter p { margin: 0.2rem 0; }
+        .mini-letter table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; }
+        .mini-letter th, .mini-letter td { border: 0.5px solid #ddd; padding: 2px; text-align: left; }
+      `}</style>
+      
+      <div className="settings-form">
       {/* Saved Toast */}
       {saved && (
         <motion.div
@@ -253,9 +331,67 @@ const Pengaturan = () => {
         </button>
       </div>
 
-      <p style={{ marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-subtle)', textAlign: 'center' }}>
-        Pengaturan disimpan secara lokal di perangkat ini (localStorage). Gambar kop surat dan tanda tangan perlu diupload ulang jika menggunakan perangkat berbeda.
-      </p>
+      </div>
+
+      {/* Preview Section */}
+      <div className="preview-sticky">
+        <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '-1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <MessageSquare size={14} /> LIVE PREVIEW WHATSAPP
+        </div>
+        <div className="wa-preview">
+          <div style={{ fontSize: '0.7rem', opacity: 0.8, marginBottom: '0.5rem' }}>SDIT AL FIKRI</div>
+          <div className="wa-bubble">
+            {getWAPreview()}
+            <div style={{ textAlign: 'right', fontSize: '0.6rem', opacity: 0.5, marginTop: '0.2rem' }}>14:30 ✓✓</div>
+          </div>
+        </div>
+
+        <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '-1rem', marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <FileText size={14} /> LIVE PREVIEW SURAT
+        </div>
+        <div className="mini-letter">
+          <div style={{ textAlign: 'center', borderBottom: '1px solid #333', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>
+            {kopImage ? <img src={kopImage} style={{ width: '100%', maxHeight: '30px', objectFit: 'contain' }} alt="Kop" /> : (
+              <>
+                <h4 style={{ margin: 0 }}>SDIT AL FIKRI</h4>
+                <p style={{ fontSize: '0.4rem' }}>Jl. Raya Utama No. 123, Kota Pendidikan</p>
+              </>
+            )}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.45rem' }}>
+            <div>
+              <p>Nomor: {letterNumber.replace('{tahun}', new Date().getFullYear())}</p>
+              <p>Hal: <b>Pemberitahuan Tunggakan</b></p>
+            </div>
+            <p>{new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+          </div>
+          <p style={{ marginTop: '0.5rem' }}>Yth. Bapak/Ibu Orang Tua dari <b>AHMAD FAUZI</b></p>
+          <p style={{ fontSize: '0.45rem', marginTop: '0.5rem' }}>{letterBody}</p>
+          <table>
+            <thead>
+              <tr><th>Jenis</th><th>Bulan</th><th>Nominal</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>SPP</td><td>Mei 2026</td><td>500.000</td></tr>
+              <tr><td colSpan="2">TOTAL</td><td><b>500.000</b></td></tr>
+            </tbody>
+          </table>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem', textAlign: 'center' }}>
+            <div>
+              <p>Mengetahui,</p>
+              <p>KEPALA SEKOLAH</p>
+              <div style={{ height: '20px' }}>{ttdImage && <img src={ttdImage} style={{ height: '100%' }} alt="ttd" />}</div>
+              <p><b>{kepsekName || '................'}</b></p>
+            </div>
+            <div>
+              <p>Hormat Kami,</p>
+              <p>ADMIN TU</p>
+              <div style={{ height: '20px' }}>{ttdTuImage && <img src={ttdTuImage} style={{ height: '100%' }} alt="ttd" />}</div>
+              <p><b>{tuName || '................'}</b></p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

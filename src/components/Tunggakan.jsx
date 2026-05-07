@@ -16,7 +16,7 @@ const Tunggakan = () => {
   const [filterStatus, setFilterStatus] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState('');
-  const [newItem, setNewItem] = useState({ payment_type: '', month: '', amount: '' });
+  const [newItems, setNewItems] = useState([{ payment_type: '', month: '', amount: '' }]);
   const [editingArrear, setEditingArrear] = useState(null);
   const [studentSearchInput, setStudentSearchInput] = useState('');
   const [showStudentDropdown, setShowStudentDropdown] = useState(false);
@@ -37,48 +37,64 @@ const Tunggakan = () => {
   };
 
   const handleSaveArrear = async () => {
-    if (!selectedStudent || !newItem.payment_type || !newItem.month || !newItem.amount) {
-      alert('Semua field wajib diisi.');
-      return;
-    }
+    if (!selectedStudent) return alert('Pilih siswa terlebih dahulu.');
 
     if (editingArrear) {
+      const item = newItems[0];
+      if (!item.payment_type || !item.month || !item.amount) return alert('Semua field wajib diisi.');
+
       const { error } = await supabase
         .from('notif_arrears')
         .update({
-          payment_type: newItem.payment_type,
-          month: newItem.month,
-          amount: Number(newItem.amount)
+          payment_type: item.payment_type,
+          month: item.month,
+          amount: Number(item.amount)
         })
         .eq('id', editingArrear.id);
       
       if (error) return alert('Gagal update: ' + error.message);
     } else {
-      const { error } = await supabase.from('notif_arrears').insert([{
-        student_id: selectedStudent,
-        payment_type: newItem.payment_type,
-        month: newItem.month,
-        amount: Number(newItem.amount),
-        is_paid: false
-      }]);
+      const validItems = newItems.filter(i => i.payment_type && i.month && i.amount);
+      if (validItems.length === 0) return alert('Tambahkan minimal 1 item yang lengkap.');
+
+      const { error } = await supabase.from('notif_arrears').insert(
+        validItems.map(item => ({
+          student_id: selectedStudent,
+          payment_type: item.payment_type,
+          month: item.month,
+          amount: Number(item.amount),
+          is_paid: false
+        }))
+      );
 
       if (error) return alert('Gagal menambah: ' + error.message);
     }
 
-    setNewItem({ payment_type: '', month: '', amount: '' });
+    setNewItems([{ payment_type: '', month: '', amount: '' }]);
     setEditingArrear(null);
     setShowAddModal(false);
     fetchData();
   };
 
+  const handleAddNewItem = () => {
+    setNewItems([...newItems, { payment_type: '', month: '', amount: '' }]);
+  };
+
+  const handleRemoveNewItem = (idx) => {
+    if (newItems.length === 1) return;
+    const next = [...newItems];
+    next.splice(idx, 1);
+    setNewItems(next);
+  };
+
   const handleEditArrear = (item) => {
     setEditingArrear(item);
     setSelectedStudent(item.student_id);
-    setNewItem({
+    setNewItems([{
       payment_type: item.payment_type,
       month: item.month,
       amount: item.amount
-    });
+    }]);
     setShowAddModal(true);
   };
 
@@ -152,6 +168,32 @@ const Tunggakan = () => {
     };
     reader.readAsBinaryString(file);
     e.target.value = '';
+  };
+
+  const handleExportRecap = () => {
+    const data = [];
+    filteredStudents.forEach(student => {
+      const items = studentArrearsMap[student.id] || [];
+      items.forEach(item => {
+        data.push({
+          Nama: student.name,
+          Kelas: student.class,
+          NIS: student.nis || '-',
+          Jenis_Tagihan: item.payment_type,
+          Periode: item.month,
+          Nominal: item.amount,
+          Status: item.is_paid ? 'Lunas' : 'Belum Lunas'
+        });
+      });
+    });
+
+    if (data.length === 0) return alert('Tidak ada data untuk diekspor.');
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Rekap_Tunggakan');
+    const filename = `Rekap_Tunggakan_${filterClass || 'Semua'}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, filename);
   };
 
   const downloadTemplate = () => {
@@ -249,12 +291,13 @@ const Tunggakan = () => {
       <div className="toolbar" style={{ marginBottom: '1rem' }}>
         <div></div>
         <div className="toolbar-actions">
+          <button onClick={handleExportRecap} className="btn btn-outline btn-sm" style={{ borderColor: 'var(--accent-green)', color: 'var(--accent-green)' }}><FileUp size={16} /> Rekap Excel</button>
           <button onClick={downloadTemplate} className="btn btn-outline btn-sm"><FileDown size={16} /> Template</button>
           <label className="btn btn-outline btn-sm" style={{ cursor: 'pointer' }}>
             <UploadCloud size={16} /> Impor Excel
             <input type="file" hidden accept=".xlsx,.xls" onChange={handleImportExcel} />
           </label>
-          <button onClick={() => { setEditingArrear(null); setSelectedStudent(''); setNewItem({ payment_type: '', month: '', amount: '' }); setShowAddModal(true); }} className="btn btn-primary btn-sm"><Plus size={16} /> Tambah Tunggakan</button>
+          <button onClick={() => { setEditingArrear(null); setSelectedStudent(''); setNewItems([{ payment_type: '', month: '', amount: '' }]); setShowAddModal(true); }} className="btn btn-primary btn-sm"><Plus size={16} /> Tambah Tunggakan</button>
         </div>
       </div>
 
@@ -457,36 +500,69 @@ const Tunggakan = () => {
                 )}
               </div>
 
-              <div className="form-group">
-                <label>Jenis Tagihan *</label>
-                <input
-                  className="form-input"
-                  placeholder="SPP, Kegiatan, Buku, dll"
-                  value={newItem.payment_type}
-                  onChange={(e) => setNewItem({ ...newItem, payment_type: e.target.value })}
-                />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <label style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-muted)' }}>Rincian Tunggakan</label>
+                {!editingArrear && (
+                  <button className="btn btn-outline btn-sm" onClick={handleAddNewItem} style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}>
+                    <Plus size={14} /> Tambah Item
+                  </button>
+                )}
               </div>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Bulan / Keterangan *</label>
-                  <input
-                    className="form-input"
-                    placeholder="Mei 2026, Semester 1, dll"
-                    value={newItem.month}
-                    onChange={(e) => setNewItem({ ...newItem, month: e.target.value })}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Nominal (Rp) *</label>
-                  <input
-                    type="number"
-                    className="form-input"
-                    placeholder="500000"
-                    value={newItem.amount}
-                    onChange={(e) => setNewItem({ ...newItem, amount: e.target.value })}
-                  />
-                </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '300px', overflowY: 'auto', paddingRight: '0.5rem' }}>
+                {newItems.map((item, idx) => (
+                  <div key={idx} className="glass-panel" style={{ padding: '1rem', background: 'rgba(255,255,255,0.03)' }}>
+                    {!editingArrear && newItems.length > 1 && (
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+                        <button className="btn btn-icon btn-danger btn-sm" onClick={() => handleRemoveNewItem(idx)}>
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    )}
+                    <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                      <label style={{ fontSize: '0.75rem' }}>Jenis Tagihan *</label>
+                      <input
+                        className="form-input form-input-sm"
+                        placeholder="SPP, Kegiatan, dll"
+                        value={item.payment_type}
+                        onChange={(e) => {
+                          const next = [...newItems];
+                          next[idx].payment_type = e.target.value;
+                          setNewItems(next);
+                        }}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label style={{ fontSize: '0.75rem' }}>Bulan / Ket *</label>
+                        <input
+                          className="form-input form-input-sm"
+                          placeholder="Mei 2026, dll"
+                          value={item.month}
+                          onChange={(e) => {
+                            const next = [...newItems];
+                            next[idx].month = e.target.value;
+                            setNewItems(next);
+                          }}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label style={{ fontSize: '0.75rem' }}>Nominal *</label>
+                        <input
+                          type="number"
+                          className="form-input form-input-sm"
+                          placeholder="0"
+                          value={item.amount}
+                          onChange={(e) => {
+                            const next = [...newItems];
+                            next[idx].amount = e.target.value;
+                            setNewItems(next);
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
 
               <div className="modal-footer">
