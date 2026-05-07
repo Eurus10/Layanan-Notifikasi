@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   MessageSquare, FileText, Search, Download, Printer,
-  X, CheckCircle2, Phone, Send, FileDown, FileUp
+  X, CheckCircle2, Phone, Send, FileDown, FileUp, Edit2, Save, Edit
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
@@ -14,6 +14,9 @@ const Notifikasi = () => {
   const [filterClass, setFilterClass] = useState('');
   const [selected, setSelected] = useState(new Set());
   const [showLetterModal, setShowLetterModal] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(null);
+  const [editForm, setEditForm] = useState({ phone: '', items: [] });
+  const [savingEdit, setSavingEdit] = useState(false);
   const letterRef = useRef(null);
 
   // Settings from localStorage
@@ -132,6 +135,51 @@ const Notifikasi = () => {
 
   const handleShowLetter = (student) => {
     setShowLetterModal(student);
+  };
+
+  const handleOpenEdit = (student) => {
+    const items = studentArrearsMap[student.id] || [];
+    setEditForm({
+      phone: student.parent_phone || '',
+      items: items.map(i => ({ ...i })) // Deep copy
+    });
+    setShowEditModal(student);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!showEditModal) return;
+    setSavingEdit(true);
+    
+    try {
+      // 1. Update Student Phone
+      const { error: studentError } = await supabase
+        .from('notif_students')
+        .update({ parent_phone: editForm.phone })
+        .eq('id', showEditModal.id);
+      
+      if (studentError) throw studentError;
+
+      // 2. Update Arrears Items
+      for (const item of editForm.items) {
+        const { error: arrearError } = await supabase
+          .from('notif_arrears')
+          .update({ 
+            payment_type: item.payment_type,
+            month: item.month,
+            amount: Number(item.amount)
+          })
+          .eq('id', item.id);
+        
+        if (arrearError) throw arrearError;
+      }
+
+      alert('Data berhasil diperbarui!');
+      setShowEditModal(null);
+      fetchData();
+    } catch (err) {
+      alert('Gagal menyimpan perubahan: ' + err.message);
+    }
+    setSavingEdit(false);
   };
 
   const handleDownloadPDF = async (student) => {
@@ -416,6 +464,14 @@ const Notifikasi = () => {
                       >
                         <FileText size={13} /> Surat
                       </button>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => handleOpenEdit(student)}
+                        title="Edit Data"
+                        style={{ padding: '0.35rem 0.6rem', fontSize: '0.75rem', background: 'rgba(99, 102, 241, 0.2)', borderColor: 'rgba(99, 102, 241, 0.4)', color: '#a5b4fc' }}
+                      >
+                        <Edit2 size={13} /> Edit
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -549,6 +605,98 @@ const Notifikasi = () => {
                     </div>
                   </div>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Edit Data Modal */}
+      <AnimatePresence>
+        {showEditModal && (
+          <div className="modal-overlay">
+            <motion.div
+              className="modal-card"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              style={{ maxWidth: '600px' }}
+            >
+              <div className="modal-header">
+                <h3>Edit Data — {showEditModal.name}</h3>
+                <button className="modal-close" onClick={() => setShowEditModal(null)}><X size={16} /></button>
+              </div>
+
+              <div className="modal-body" style={{ padding: '1.5rem' }}>
+                <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                  <label>Nomor WhatsApp (Wali Murid)</label>
+                  <div style={{ position: 'relative' }}>
+                    <Phone size={16} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-subtle)' }} />
+                    <input
+                      className="form-input"
+                      style={{ paddingLeft: '2.5rem' }}
+                      placeholder="Contoh: 08123456789"
+                      value={editForm.phone}
+                      onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Rincian Tunggakan</label>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '300px', overflowY: 'auto', paddingRight: '0.5rem' }}>
+                  {editForm.items.map((item, idx) => (
+                    <div key={item.id} className="glass-panel" style={{ padding: '1rem', background: 'rgba(255,255,255,0.02)' }}>
+                      <div className="form-row">
+                        <div className="form-group">
+                          <label style={{ fontSize: '0.75rem' }}>Jenis Tagihan</label>
+                          <input
+                            className="form-input form-input-sm"
+                            value={item.payment_type}
+                            onChange={(e) => {
+                              const newItems = [...editForm.items];
+                              newItems[idx].payment_type = e.target.value;
+                              setEditForm({ ...editForm, items: newItems });
+                            }}
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label style={{ fontSize: '0.75rem' }}>Bulan/Ket</label>
+                          <input
+                            className="form-input form-input-sm"
+                            value={item.month}
+                            onChange={(e) => {
+                              const newItems = [...editForm.items];
+                              newItems[idx].month = e.target.value;
+                              setEditForm({ ...editForm, items: newItems });
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div className="form-group" style={{ marginTop: '0.5rem' }}>
+                        <label style={{ fontSize: '0.75rem' }}>Nominal (Rp)</label>
+                        <input
+                          type="number"
+                          className="form-input form-input-sm"
+                          value={item.amount}
+                          onChange={(e) => {
+                            const newItems = [...editForm.items];
+                            newItems[idx].amount = e.target.value;
+                            setEditForm({ ...editForm, items: newItems });
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button className="btn btn-outline" onClick={() => setShowEditModal(null)}>Batal</button>
+                <button className="btn btn-primary" onClick={handleSaveEdit} disabled={savingEdit}>
+                  <Save size={16} /> {savingEdit ? 'Menyimpan...' : 'Simpan Perubahan'}
+                </button>
               </div>
             </motion.div>
           </div>

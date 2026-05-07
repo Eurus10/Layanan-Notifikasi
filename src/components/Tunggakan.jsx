@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Search, Plus, Trash2, X, Save, UploadCloud, FileDown,
-  AlertCircle, CheckCircle2, Filter
+  AlertCircle, CheckCircle2, Filter, Edit2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
@@ -17,6 +17,7 @@ const Tunggakan = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState('');
   const [newItem, setNewItem] = useState({ payment_type: '', month: '', amount: '' });
+  const [editingArrear, setEditingArrear] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -33,25 +34,50 @@ const Tunggakan = () => {
     setLoading(false);
   };
 
-  const handleAddArrear = async () => {
+  const handleSaveArrear = async () => {
     if (!selectedStudent || !newItem.payment_type || !newItem.month || !newItem.amount) {
       alert('Semua field wajib diisi.');
       return;
     }
 
-    const { error } = await supabase.from('notif_arrears').insert([{
-      student_id: selectedStudent,
-      payment_type: newItem.payment_type,
-      month: newItem.month,
-      amount: Number(newItem.amount),
-      is_paid: false
-    }]);
+    if (editingArrear) {
+      const { error } = await supabase
+        .from('notif_arrears')
+        .update({
+          payment_type: newItem.payment_type,
+          month: newItem.month,
+          amount: Number(newItem.amount)
+        })
+        .eq('id', editingArrear.id);
+      
+      if (error) return alert('Gagal update: ' + error.message);
+    } else {
+      const { error } = await supabase.from('notif_arrears').insert([{
+        student_id: selectedStudent,
+        payment_type: newItem.payment_type,
+        month: newItem.month,
+        amount: Number(newItem.amount),
+        is_paid: false
+      }]);
 
-    if (error) return alert('Gagal menambah: ' + error.message);
+      if (error) return alert('Gagal menambah: ' + error.message);
+    }
 
     setNewItem({ payment_type: '', month: '', amount: '' });
+    setEditingArrear(null);
     setShowAddModal(false);
     fetchData();
+  };
+
+  const handleEditArrear = (item) => {
+    setEditingArrear(item);
+    setSelectedStudent(item.student_id);
+    setNewItem({
+      payment_type: item.payment_type,
+      month: item.month,
+      amount: item.amount
+    });
+    setShowAddModal(true);
   };
 
   const togglePaid = async (arrearId, currentStatus) => {
@@ -221,7 +247,7 @@ const Tunggakan = () => {
             <UploadCloud size={16} /> Impor Excel
             <input type="file" hidden accept=".xlsx,.xls" onChange={handleImportExcel} />
           </label>
-          <button onClick={() => setShowAddModal(true)} className="btn btn-primary btn-sm"><Plus size={16} /> Tambah Tunggakan</button>
+          <button onClick={() => { setEditingArrear(null); setSelectedStudent(''); setNewItem({ payment_type: '', month: '', amount: '' }); setShowAddModal(true); }} className="btn btn-primary btn-sm"><Plus size={16} /> Tambah Tunggakan</button>
         </div>
       </div>
 
@@ -304,9 +330,14 @@ const Tunggakan = () => {
                           </div>
                         </td>
                         <td>
-                          <button className="btn btn-icon btn-danger" onClick={() => deleteArrear(item.id)} title="Hapus">
-                            <Trash2 size={14} />
-                          </button>
+                          <div style={{ display: 'flex', gap: '0.4rem' }}>
+                            <button className="btn btn-icon btn-outline" onClick={() => handleEditArrear(item)} title="Edit">
+                              <Edit2 size={14} />
+                            </button>
+                            <button className="btn btn-icon btn-danger" onClick={() => deleteArrear(item.id)} title="Hapus">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -336,13 +367,13 @@ const Tunggakan = () => {
               exit={{ opacity: 0, scale: 0.95 }}
             >
               <div className="modal-header">
-                <h3>Tambah Tunggakan</h3>
-                <button className="modal-close" onClick={() => setShowAddModal(false)}><X size={16} /></button>
+                <h3>{editingArrear ? 'Edit Tunggakan' : 'Tambah Tunggakan'}</h3>
+                <button className="modal-close" onClick={() => { setShowAddModal(false); setEditingArrear(null); }}><X size={16} /></button>
               </div>
 
               <div className="form-group">
                 <label>Pilih Siswa *</label>
-                <select className="form-input" value={selectedStudent} onChange={(e) => setSelectedStudent(e.target.value)}>
+                <select className="form-input" value={selectedStudent} onChange={(e) => setSelectedStudent(e.target.value)} disabled={!!editingArrear}>
                   <option value="">-- Pilih Siswa --</option>
                   {students.map(s => (
                     <option key={s.id} value={s.id}>{s.name} ({s.class})</option>
@@ -383,9 +414,9 @@ const Tunggakan = () => {
               </div>
 
               <div className="modal-footer">
-                <button className="btn btn-outline" onClick={() => setShowAddModal(false)}>Batal</button>
-                <button className="btn btn-primary" onClick={handleAddArrear}>
-                  <Save size={16} /> Tambah Tunggakan
+                <button className="btn btn-outline" onClick={() => { setShowAddModal(false); setEditingArrear(null); }}>Batal</button>
+                <button className="btn btn-primary" onClick={handleSaveArrear}>
+                  <Save size={16} /> {editingArrear ? 'Simpan Perubahan' : 'Tambah Tunggakan'}
                 </button>
               </div>
             </motion.div>
